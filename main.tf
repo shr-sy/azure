@@ -17,6 +17,8 @@ provider "azurerm" {
   subscription_id = var.subscription_id
 }
 
+data "azurerm_client_config" "current" {}
+
 # Resource Group
 resource "azurerm_resource_group" "rg" {
   name     = var.resource_group_name
@@ -40,8 +42,8 @@ resource "azurerm_linux_web_app" "app" {
   service_plan_id     = azurerm_service_plan.asp.id
 
   site_config {
-  always_on = false  # ✅ Set this to false for Free tier
-}
+    always_on = false
+  }
 }
 
 # Storage Account
@@ -53,7 +55,7 @@ resource "azurerm_storage_account" "sa" {
   account_replication_type = "LRS"
 }
 
-# ✅ Azure Function App (Linux) - fixed deprecated resource
+# Function App (Linux)
 resource "azurerm_linux_function_app" "function" {
   name                       = var.function_app_name
   location                   = azurerm_resource_group.rg.location
@@ -69,24 +71,6 @@ resource "azurerm_linux_function_app" "function" {
   }
 }
 
-# SQL Server
-resource "azurerm_mssql_server" "sql_server" {
-  name                         = var.sql_server_name
-  resource_group_name          = azurerm_resource_group.rg.name
-  location                     = azurerm_resource_group.rg.location
-  version                      = "12.0"
-  administrator_login          = var.sql_admin_user
-  administrator_login_password = var.sql_admin_password
-}
-
-# SQL Database
-resource "azurerm_mssql_database" "sql_db" {
-  name      = var.sql_database_name
-  server_id = azurerm_mssql_server.sql_server.id
-  collation = "SQL_Latin1_General_CP1_CI_AS"
-  sku_name  = "Basic"
-}
-
 # Key Vault
 resource "azurerm_key_vault" "kv" {
   name                        = var.key_vault_name
@@ -96,4 +80,42 @@ resource "azurerm_key_vault" "kv" {
   sku_name                    = "standard"
   soft_delete_retention_days  = 7
   purge_protection_enabled    = false
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    secret_permissions = ["get", "set", "list", "delete"]
+  }
+}
+
+# Key Vault Secrets (SQL credentials)
+resource "azurerm_key_vault_secret" "sql_admin_user" {
+  name         = "sql-admin-user"
+  value        = "sqladminuser"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+resource "azurerm_key_vault_secret" "sql_admin_password" {
+  name         = "sql-admin-password"
+  value        = "shruti@123"
+  key_vault_id = azurerm_key_vault.kv.id
+}
+
+# SQL Server
+resource "azurerm_mssql_server" "sql_server" {
+  name                         = var.sql_server_name
+  resource_group_name          = azurerm_resource_group.rg.name
+  location                     = azurerm_resource_group.rg.location
+  version                      = "12.0"
+  administrator_login          = azurerm_key_vault_secret.sql_admin_user.value
+  administrator_login_password = azurerm_key_vault_secret.sql_admin_password.value
+}
+
+# SQL Database
+resource "azurerm_mssql_database" "sql_db" {
+  name      = var.sql_database_name
+  server_id = azurerm_mssql_server.sql_server.id
+  collation = "SQL_Latin1_General_CP1_CI_AS"
+  sku_name  = "Basic"
 }
