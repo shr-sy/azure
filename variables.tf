@@ -38,17 +38,6 @@ variable "sql_database_name" {
   type        = string
 }
 
-variable "sql_admin_user" {
-  description = "SQL admin username"
-  type        = string
-}
-
-variable "sql_admin_password" {
-  description = "SQL admin password"
-  type        = string
-  sensitive   = true
-}
-
 variable "key_vault_name" {
   description = "Key Vault name"
   type        = string
